@@ -96,6 +96,12 @@ To move a talk to another Tuesday, change its Date. To turn emails to speakers o
 ### Adding a talk yourself, for example an invited speaker
 Add a row with Date, Status **Approved**, Speaker and Title, and optionally Abstract, Time, Room and Note. The Email column is optional; with an address there, the speaker gets the confirmation email. To get the slides-upload link for the speaker, select the row and use the menu **Seminar → Show slides-upload link for selected talk**. That menu appears after you reload the sheet once.
 
+### Removing a talk
+Right-click the row number on the left of the sheet and choose **Delete row**. The talk disappears from the website and nobody gets an email. If you set the Status to **Declined** instead, the speaker gets the polite "not scheduled" email.
+
+### Earlier Tuesdays
+Talks with a date in the past are shown under **Earlier Tuesdays** on the website, newest first, together with their slides. To add old talks, add a row with the past Date, Status **Approved**, Speaker, Title and optionally Abstract and Slides. Leave **Email** empty for these rows; otherwise the speaker gets a "your talk is confirmed" email.
+
 ### Weeks without a seminar
 Add a row with the Date, Status **No seminar** and an optional Note, such as `Autumn break`.
 

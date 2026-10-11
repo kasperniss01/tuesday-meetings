@@ -109,10 +109,9 @@ textarea { min-height: 90px; resize: vertical; }
 .inline input { flex: 1 1 160px; width: auto; }
 
 .past { display: grid; gap: 0; margin-top: 12px; }
-.past-item { display: grid; grid-template-columns: 104px minmax(0, 1fr) auto; gap: 12px; font-size: 14px; border-top: 1px solid var(--line); padding-block: 9px; align-items: baseline; }
-.past-item .d { font-family: var(--f-mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
-@media (max-width: 520px) { .past-item { grid-template-columns: minmax(0, 1fr) auto; } .past-item .d { grid-column: 1 / -1; } }
-details.archive > summary { cursor: pointer; font-family: var(--f-display); font-size: 20px; font-weight: 600; }
+#pastSection { margin-top: 28px; }
+.past .day { background: transparent; }
+.past .leaf .wd { background: var(--muted); }
 .notice { padding: 12px 14px; border-radius: 6px; margin-bottom: 20px; font-size: 14px; }
 .notice.demo { background: var(--warn-soft); color: var(--ink); border: 1px solid var(--line); }
 .notice.err { background: var(--bad-soft); color: var(--bad); }
@@ -147,11 +146,13 @@ footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
         <div><button class="btn" id="moreBtn" type="button">Show 6 more Tuesdays</button></div>
       </section>
 
-      <section id="pastSection" hidden>
-        <details class="archive">
-          <summary>Past talks and slides</summary>
-          <div class="past" id="pastList"></div>
-        </details>
+      <section class="col" id="pastSection" hidden aria-labelledby="pastHead">
+        <div class="section-head">
+          <h2 id="pastHead">Earlier Tuesdays</h2>
+          <span class="muted" id="pastCount"></span>
+        </div>
+        <div class="agenda past" id="pastList"></div>
+        <div><button class="btn" id="pastMoreBtn" type="button" hidden>Show all earlier Tuesdays</button></div>
       </section>
     </main>
 
@@ -209,7 +210,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
 
   const state = {
     settings: { name: "Tuesday Seminar", time: "", room: "", contact: "", about: "" },
-    talks: {}, pending: new Set(), mine: [], statuses: {}, shown: 8, loaded: false,
+    talks: {}, pending: new Set(), mine: [], statuses: {}, shown: 8, pastShown: 4, loaded: false,
   };
 
   /* ---------- dates ---------- */
@@ -282,10 +283,10 @@ footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
     const d = parseYmd(date);
     return el("div", { class: "leaf", "aria-hidden": "true" },
       el("div", { class: "wd", text: "TUE" }), el("div", { class: "dn", text: String(d.getDate()) }),
-      el("div", { class: "mo", text: MONTHS[d.getMonth()] }), el("div", { class: "wk", text: "wk " + isoWeek(d) }));
+      el("div", { class: "mo", text: MONTHS[d.getMonth()] }), el("div", { class: "wk", text: "week " + isoWeek(d) }));
   }
   function slidesLink(url) {
-    return el("a", { class: "slides-link", href: url, target: "_blank", rel: "noopener" }, "Slides ↗");
+    return el("a", { class: "slides-link", href: url, target: "_blank", rel: "noopener" }, "View slides ↗");
   }
 
   function renderAgenda() {
@@ -300,14 +301,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
       const day = el("article", { class: "day", "aria-label": longDate(date) }, leaf(date), body);
       if (t && t.kind === "talk") {
         if (!marked) { day.classList.add("next"); marked = true; body.append(el("span", { class: "tag", text: "Next talk" })); }
-        const time = t.time || s.time, room = t.room || s.room;
-        body.append(el("div", { class: "when" }, el("span", { text: longDate(date) }),
-          time ? el("span", { text: time }) : null, room ? el("span", { text: room }) : null));
-        body.append(el("div", { class: "title", text: t.title || "Title to be announced" }));
-        body.append(el("div", { class: "speaker", text: t.speaker || "Speaker to be announced" }));
-        if (t.note) body.append(el("div", { class: "muted", text: t.note }));
-        if (t.abstract) body.append(el("details", { class: "abs" }, el("summary", { text: "What it's about" }), el("div", { class: "abstract", text: t.abstract })));
-        if (isHttps(t.slides)) body.append(el("div", { class: "row-actions" }, slidesLink(t.slides)));
+        talkBody(body, date, t);
       } else if (t && t.kind === "none") {
         body.append(el("div", { class: "when" }, el("span", { text: longDate(date) })));
         body.append(el("div", null, el("b", { text: "No seminar" }), t.note ? el("span", { class: "muted", text: " · " + t.note }) : null));
@@ -326,17 +320,32 @@ footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
     }
   }
 
+  function talkBody(body, date, t) {
+    const s = state.settings;
+    const time = t.time || s.time, room = t.room || s.room;
+    body.append(el("div", { class: "when" }, el("span", { text: longDate(date) }),
+      time ? el("span", { text: time }) : null, room ? el("span", { text: room }) : null));
+    body.append(el("div", { class: "title", text: t.title || "Title to be announced" }));
+    body.append(el("div", { class: "speaker", text: t.speaker || "Speaker to be announced" }));
+    if (t.note) body.append(el("div", { class: "muted", text: t.note }));
+    if (t.abstract) body.append(el("details", { class: "abs" }, el("summary", { text: "What it's about" }), el("div", { class: "abstract", text: t.abstract })));
+    if (isHttps(t.slides)) body.append(el("div", { class: "row-actions" }, slidesLink(t.slides)));
+  }
+
   function renderPast() {
     const today = todayYmd();
     const past = Object.values(state.talks).filter((t) => t.kind === "talk" && t.date < today).sort((a, b) => b.date.localeCompare(a.date));
     $("pastSection").hidden = past.length === 0;
+    $("pastCount").textContent = past.length ? past.length + (past.length === 1 ? " talk" : " talks") : "";
     const box = $("pastList"); box.replaceChildren();
-    for (const t of past) {
-      box.append(el("div", { class: "past-item" },
-        el("div", { class: "d", text: t.date }),
-        el("div", { style: "min-width:0" }, el("div", { text: t.title || "Untitled" }), el("div", { class: "muted", text: t.speaker || "" })),
-        isHttps(t.slides) ? slidesLink(t.slides) : el("span")));
+    for (const t of past.slice(0, state.pastShown)) {
+      const body = el("div", { class: "body" });
+      talkBody(body, t.date, t);
+      box.append(el("article", { class: "day", "aria-label": longDate(t.date) }, leaf(t.date), body));
     }
+    const more = $("pastMoreBtn");
+    more.hidden = past.length <= state.pastShown;
+    more.textContent = "Show all " + past.length + " earlier Tuesdays";
   }
 
   function renderDateSelect() {
@@ -373,8 +382,10 @@ footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
     }
   }
 
+  const flash = {}; // messages that survive a re-render of "Your talks"
   function uploadBox(token, current) {
     const msg = el("div", { "aria-live": "polite" });
+    if (flash[token]) { setMsg(msg, flash[token][0], flash[token][1]); delete flash[token]; }
     const file = el("input", { type: "file", id: "up-file-" + token.slice(0, 8), accept: ".pdf,.pptx,.ppt,.key,.odp" });
     const link = el("input", { type: "url", id: "up-link-" + token.slice(0, 8), placeholder: "https://…", "aria-label": "Link to your slides" });
     const upBtn = el("button", { class: "btn small primary", type: "button", text: current ? "Replace slides" : "Upload slides" });
@@ -389,7 +400,8 @@ footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
         const dataUrl = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(new Error("Couldn't read the file.")); r.readAsDataURL(f); });
         const data = String(dataUrl).split(",")[1] || "";
         await apiPost({ action: "slides", token, filename: f.name, mimeType: f.type || "application/octet-stream", data });
-        setMsg(msg, "ok", "Slides uploaded. They now appear with your talk.");
+        flash[token] = ["ok", "Slides uploaded. They now appear with your talk."];
+        setMsg(msg, "ok", flash[token][1]);
         await refresh();
       } catch (e) { setMsg(msg, "err", e.message || "Upload failed. Please try again."); }
       finally { upBtn.disabled = linkBtn.disabled = false; }
@@ -399,7 +411,12 @@ footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
       if (!isHttps(u)) return setMsg(msg, "err", "Paste a full link starting with https://");
       if (DEMO) return setMsg(msg, "info", "Preview only. Connect the Google Sheet (see README) to save real links.");
       upBtn.disabled = linkBtn.disabled = true;
-      try { await apiPost({ action: "slides", token, link: u }); setMsg(msg, "ok", "Link saved. It now appears with your talk."); await refresh(); }
+      try {
+        await apiPost({ action: "slides", token, link: u });
+        flash[token] = ["ok", "Link saved. It now appears with your talk."];
+        setMsg(msg, "ok", flash[token][1]);
+        await refresh();
+      }
       catch (e) { setMsg(msg, "err", e.message || "Couldn't save the link. Please try again."); }
       finally { upBtn.disabled = linkBtn.disabled = false; }
     });
@@ -493,6 +510,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
   });
 
   $("moreBtn").addEventListener("click", () => { state.shown += 6; renderAgenda(); });
+  $("pastMoreBtn").addEventListener("click", () => { state.pastShown = Infinity; renderPast(); });
 
   /* ---------- boot ---------- */
   state.mine = loadMine();
