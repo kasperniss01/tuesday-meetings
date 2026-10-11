@@ -108,7 +108,10 @@ Approved sessions with a date in the past are shown under **Earlier Tuesdays** o
 ### Weeks without a meeting
 Add a row with the Date, Status **No meeting** and an optional Note, such as `Autumn break`.
 
-### Slides
+### Adding slides yourself (organizer mode)
+The Settings tab has an **Organizer key**, a random code the script creates. On the website, scroll to the bottom, click **Organizer login** and enter that key. The browser remembers it. Every approved session, coming and earlier, then gets an **Add slides** button where you can upload a file or paste a link. Give the key only to co-organizers. To change it, replace it in Settings with a new code of at least 8 characters.
+
+### Slides from presenters
 After approval, speakers see an upload box in "Your sessions" on the website. It appears in the browser they used to send the request, or when they open the link from their confirmation email. They can upload a PDF, PowerPoint, Keynote or ODP file up to 25 MB, or paste a link. Uploaded files go to the "– slides" folder in your Drive, set to "anyone with the link can view". To add slides yourself, paste a link into the **Slides** column.
 
 ### Co-organizers

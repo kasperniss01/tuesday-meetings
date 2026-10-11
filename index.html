@@ -119,7 +119,9 @@ textarea { min-height: 90px; resize: vertical; }
 .notice.demo { background: var(--warn-soft); color: var(--ink); border: 1px solid var(--line); }
 .notice.err { background: var(--bad-soft); color: var(--bad); }
 .skeleton { height: 96px; border-radius: 6px; background: var(--surface); border: 1px solid var(--line); opacity: 0.6; }
-footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
+footer { margin-top: 48px; color: var(--muted); font-size: 13px; display: grid; gap: 10px; }
+.org { display: grid; gap: 8px; max-width: 420px; }
+.org-bar { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; padding: 10px 14px; border-radius: 6px; margin-bottom: 20px; background: var(--accent-soft); font-size: 14px; }
 @media (max-width: 480px) { .day { grid-template-columns: 64px minmax(0, 1fr); gap: 12px; } .leaf .dn { font-size: 26px; } }
 @media (prefers-reduced-motion: no-preference) { .day, .btn { transition: border-color .15s; } }
 </style>
@@ -134,6 +136,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
     <p class="about muted" id="aboutText" hidden></p>
   </header>
 
+  <div id="orgBar"></div>
   <div id="notice"></div>
 
   <div class="grid">
@@ -210,7 +213,18 @@ footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
     </aside>
   </div>
 
-  <footer id="footer"></footer>
+  <footer>
+    <p id="footerText"></p>
+    <div id="orgArea" class="org">
+      <button class="btn link small" type="button" id="orgOpen">Organizer login</button>
+      <form id="orgForm" class="inline" hidden novalidate>
+        <input type="password" id="org-key" placeholder="Organizer key" autocomplete="current-password" aria-label="Organizer key">
+        <button class="btn small primary" type="submit">Log in</button>
+        <button class="btn small" type="button" id="orgCancel">Cancel</button>
+      </form>
+      <div id="orgMsg" aria-live="polite"></div>
+    </div>
+  </footer>
 </div>
 
 <script>
@@ -225,6 +239,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
   const state = {
     settings: { name: "Tuesday Meeting", time: "", room: "", contact: "", about: "" },
     talks: {}, pending: new Set(), mine: [], statuses: {}, shown: 8, pastShown: 4, loaded: false,
+    orgKey: "", openUploads: new Set(),
   };
 
   /* ---------- dates ---------- */
@@ -290,7 +305,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
     const add = (label, val) => { if (val) meta.append(el("span", null, label + " ", el("b", { text: val }))); };
     add("Time", s.time); add("Room", s.room); add("Contact", s.contact);
     $("aboutText").textContent = s.about || ""; $("aboutText").hidden = !s.about;
-    $("footer").textContent = s.contact ? "Questions? Contact " + s.contact + "." : "";
+    $("footerText").textContent = s.contact ? "Questions? Contact " + s.contact + "." : "";
   }
 
   function leaf(date) {
@@ -350,7 +365,19 @@ footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
     const links = [];
     if (isHttps(t.paper)) links.push(el("a", { class: "slides-link", href: t.paper, target: "_blank", rel: "noopener" }, "Paper ↗"));
     if (isHttps(t.slides)) links.push(slidesLink(t.slides));
-    if (links.length) body.append(el("div", { class: "row-actions" }, ...links));
+    if (state.orgKey) {
+      const holder = el("div");
+      const open = state.openUploads.has(date);
+      const toggle = el("button", { class: "btn small", type: "button", "aria-expanded": String(open),
+        text: open ? "Close" : (isHttps(t.slides) ? "Replace slides" : "Add slides") });
+      toggle.addEventListener("click", () => {
+        if (state.openUploads.has(date)) state.openUploads.delete(date); else state.openUploads.add(date);
+        renderAgenda(); renderPast();
+      });
+      links.push(toggle);
+      if (open) holder.append(uploadBox({ key: state.orgKey, date }, t.slides));
+      body.append(el("div", { class: "row-actions" }, ...links), holder);
+    } else if (links.length) body.append(el("div", { class: "row-actions" }, ...links));
   }
 
   function renderPast() {
@@ -394,7 +421,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
         el("div", { class: "t", text: st.title || m.title || "Your session" }),
         date ? el("div", { class: "muted", text: longDate(date) }) : null,
         status ? el("span", { class: "status " + status, text: STATUS_TEXT[status] || status }) : null);
-      if (status === "Approved") item.append(uploadBox(m.token, st.slides));
+      if (status === "Approved") item.append(uploadBox({ token: m.token }, st.slides));
       if (status === "Declined" || status === "Unknown") {
         item.append(el("div", null, el("button", { class: "btn link small", type: "button", text: "Remove from this list",
           onclick: () => { state.mine = state.mine.filter((x) => x.token !== m.token); saveMine(); renderMine(); } })));
@@ -404,11 +431,14 @@ footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
   }
 
   const flash = {}; // messages that survive a re-render of "Your talks"
-  function uploadBox(token, current) {
+  // target is { token } for a presenter, or { key, date } for an organizer
+  function uploadBox(target, current) {
+    const id = target.token ? target.token.slice(0, 8) : "org-" + target.date;
+    const token = target.token || "org-" + target.date; // key for flash messages
     const msg = el("div", { "aria-live": "polite" });
     if (flash[token]) { setMsg(msg, flash[token][0], flash[token][1]); delete flash[token]; }
-    const file = el("input", { type: "file", id: "up-file-" + token.slice(0, 8), accept: ".pdf,.pptx,.ppt,.key,.odp" });
-    const link = el("input", { type: "url", id: "up-link-" + token.slice(0, 8), placeholder: "https://…", "aria-label": "Link to your slides" });
+    const file = el("input", { type: "file", id: "up-file-" + id, accept: ".pdf,.pptx,.ppt,.key,.odp" });
+    const link = el("input", { type: "url", id: "up-link-" + id, placeholder: "https://…", "aria-label": "Link to the slides" });
     const upBtn = el("button", { class: "btn small primary", type: "button", text: current ? "Replace slides" : "Upload slides" });
     const linkBtn = el("button", { class: "btn small", type: "button", text: "Save link" });
     upBtn.addEventListener("click", async () => {
@@ -420,8 +450,8 @@ footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
       try {
         const dataUrl = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(new Error("Couldn't read the file.")); r.readAsDataURL(f); });
         const data = String(dataUrl).split(",")[1] || "";
-        await apiPost({ action: "slides", token, filename: f.name, mimeType: f.type || "application/octet-stream", data });
-        flash[token] = ["ok", "Uploaded. The file now appears with your session."];
+        await apiPost({ action: "slides", ...target, filename: f.name, mimeType: f.type || "application/octet-stream", data });
+        flash[token] = ["ok", "Uploaded. The file now appears with the session."];
         setMsg(msg, "ok", flash[token][1]);
         await refresh();
       } catch (e) { setMsg(msg, "err", e.message || "Upload failed. Please try again."); }
@@ -433,8 +463,8 @@ footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
       if (DEMO) return setMsg(msg, "info", "Preview only. Connect the Google Sheet (see README) to save real links.");
       upBtn.disabled = linkBtn.disabled = true;
       try {
-        await apiPost({ action: "slides", token, link: u });
-        flash[token] = ["ok", "Link saved. It now appears with your session."];
+        await apiPost({ action: "slides", ...target, link: u });
+        flash[token] = ["ok", "Link saved. It now appears with the session."];
         setMsg(msg, "ok", flash[token][1]);
         await refresh();
       }
@@ -449,7 +479,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
       msg);
   }
 
-  function renderAll() { renderHeader(); renderAgenda(); renderPast(); renderDateSelect(); renderMine(); }
+  function renderAll() { renderHeader(); renderOrg(); renderAgenda(); renderPast(); renderDateSelect(); renderMine(); }
 
   /* ---------- data ---------- */
   function applyProgramme(data) {
@@ -532,6 +562,35 @@ footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
     } finally { btn.disabled = false; }
   });
 
+  const ORG_KEY = "tuesdaySeminar.organizerKey";
+  function loadOrgKey() { try { return localStorage.getItem(ORG_KEY) || ""; } catch { return ""; } }
+  function saveOrgKey(k) { try { if (k) localStorage.setItem(ORG_KEY, k); else localStorage.removeItem(ORG_KEY); } catch {} }
+  function renderOrg() {
+    const bar = $("orgBar"); bar.replaceChildren();
+    $("orgOpen").hidden = !!state.orgKey || DEMO;
+    if (!state.orgKey) return;
+    bar.append(el("div", { class: "org-bar" },
+      el("b", { text: "Organizer mode." }),
+      el("span", { text: "Use “Add slides” on any session to upload slides." }),
+      el("button", { class: "btn link small", type: "button", text: "Log out", onclick: () => {
+        state.orgKey = ""; state.openUploads.clear(); saveOrgKey(""); renderAll();
+      } })));
+  }
+  $("orgOpen").addEventListener("click", () => { $("orgForm").hidden = false; $("orgOpen").hidden = true; $("org-key").focus(); });
+  $("orgCancel").addEventListener("click", () => { $("orgForm").hidden = true; setMsg($("orgMsg")); renderOrg(); });
+  $("orgForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const key = $("org-key").value.trim();
+    if (!key) return setMsg($("orgMsg"), "err", "Enter the organizer key from the Settings tab of the sheet.");
+    try {
+      await apiPost({ action: "checkKey", key });
+      state.orgKey = key; saveOrgKey(key);
+      $("org-key").value = ""; $("orgForm").hidden = true; setMsg($("orgMsg"));
+      renderAll();
+      window.scrollTo({ top: 0 });
+    } catch (err) { setMsg($("orgMsg"), "err", err.message || "Couldn't log in. Please try again."); }
+  });
+
   function syncTypeFields() {
     const type = $("rq-type").value;
     $("rq-paper-label").hidden = type !== "Reading session";
@@ -545,6 +604,7 @@ footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
 
   /* ---------- boot ---------- */
   state.mine = loadMine();
+  state.orgKey = DEMO ? "" : loadOrgKey();
   const params = new URLSearchParams(location.search);
   const linkToken = (params.get("slides") || "").trim();
   if (/^[A-Za-z0-9-]{16,64}$/.test(linkToken)) {
